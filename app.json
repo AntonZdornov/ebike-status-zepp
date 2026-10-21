@@ -1,0 +1,97 @@
+{
+  "configVersion": "v3",
+  "app": {
+    "appId": 23010,
+    "appName": "E-Bike Battery",
+    "appType": "app",
+    "extType": "workout",
+    "version": {
+      "code": 1,
+      "name": "1.0.0"
+    },
+    "icon": "icon.png",
+    "vender": "huami",
+    "description": "Battery level of an e-bike over BLE during cycling workouts"
+  },
+  "permissions": [
+    "device:os.local_storage"
+  ],
+  "runtime": {
+    "apiVersion": {
+      "compatible": "3.6",
+      "target": "3.6",
+      "minVersion": "3.6"
+    }
+  },
+  "targets": {
+    "common": {
+      "module": {
+        "data-widget": {
+          "widgets": [
+            {
+              "path": "data-widget/common/index",
+              "name": "E-Bike Battery",
+              "icon": "icon.png",
+              "window": {
+                "isPinned": 1
+              },
+              "runtime": {
+                "ability": [
+                  {
+                    "type": 1,
+                    "subType": []
+                  }
+                ]
+              }
+            }
+          ]
+        },
+        "app-side": {
+          "path": "app-side/index"
+        },
+        "setting": {
+          "path": "setting/index"
+        }
+      },
+      "platforms": [
+        {
+          "st": "r"
+        }
+      ],
+      "designWidth": 480
+    }
+  },
+  "i18n": {
+    "en-US": {
+      "appName": "E-Bike Battery",
+      "data-widget": {
+        "widgets": [
+          {
+            "name": "E-Bike Battery"
+          }
+        ]
+      }
+    },
+    "ru-RU": {
+      "appName": "Батарея e-bike",
+      "data-widget": {
+        "widgets": [
+          {
+            "name": "Батарея e-bike"
+          }
+        ]
+      }
+    },
+    "zh-CN": {
+      "appName": "电助力车电量",
+      "data-widget": {
+        "widgets": [
+          {
+            "name": "电助力车电量"
+          }
+        ]
+      }
+    }
+  },
+  "defaultLanguage": "en-US"
+}
