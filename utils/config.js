@@ -5,6 +5,7 @@ export const SETTINGS_KEYS = {
   serviceUuid: 'bike_service_uuid',
   charUuid: 'bike_char_uuid',
   lowThreshold: 'bike_low_threshold',
+  capacityWh: 'bike_capacity_wh',
 }
 
 // Standard BLE Battery Service / Battery Level
@@ -13,6 +14,7 @@ export const DEFAULT_CONFIG = {
   serviceUuid: '180F',
   charUuid: '2A19',
   lowThreshold: 20,
+  capacityWh: 0, // 0 = not configured, the energy counter stays hidden
 }
 
 // Key under which the watch caches the last received config
@@ -55,12 +57,20 @@ export function normalizeThreshold(value) {
   return Math.min(50, Math.max(5, n))
 }
 
+// Pack capacity in watt-hours; 0 means "not set"
+export function normalizeCapacityWh(value) {
+  const n = parseInt(unwrap(value), 10)
+  if (isNaN(n) || n < 0) return DEFAULT_CONFIG.capacityWh
+  return Math.min(5000, n)
+}
+
 export function normalizeConfig(raw = {}) {
   return {
     mac: normalizeMac(raw.mac),
     serviceUuid: normalizeUuid(raw.serviceUuid, DEFAULT_CONFIG.serviceUuid),
     charUuid: normalizeUuid(raw.charUuid, DEFAULT_CONFIG.charUuid),
     lowThreshold: normalizeThreshold(raw.lowThreshold),
+    capacityWh: normalizeCapacityWh(raw.capacityWh),
   }
 }
 
@@ -69,7 +79,8 @@ export function sameConfig(a, b) {
     a.mac === b.mac &&
     a.serviceUuid === b.serviceUuid &&
     a.charUuid === b.charUuid &&
-    a.lowThreshold === b.lowThreshold
+    a.lowThreshold === b.lowThreshold &&
+    a.capacityWh === b.capacityWh
   )
 }
 

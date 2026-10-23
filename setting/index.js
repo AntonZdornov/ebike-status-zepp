@@ -5,6 +5,7 @@ const KEYS = {
   serviceUuid: 'bike_service_uuid',
   charUuid: 'bike_char_uuid',
   lowThreshold: 'bike_low_threshold',
+  capacityWh: 'bike_capacity_wh',
 }
 
 const PRESETS = [
@@ -32,6 +33,7 @@ AppSettingsPage({
     const serviceUuid = read(settingsStorage, KEYS.serviceUuid, '180F')
     const charUuid = read(settingsStorage, KEYS.charUuid, '2A19')
     const threshold = Number(read(settingsStorage, KEYS.lowThreshold, 20))
+    const capacityWh = Number(read(settingsStorage, KEYS.capacityWh, 0))
     const isBattery = String(serviceUuid).toUpperCase() === '180F' && String(charUuid).toUpperCase() === '2A19'
 
     const set = (key, value) => settingsStorage.setItem(key, JSON.stringify(value))
@@ -85,6 +87,16 @@ AppSettingsPage({
           onChange: (v) => set(KEYS.lowThreshold, Number(v)),
         }),
         hint('Below the threshold the indicator turns red and the watch vibrates once.'),
+      ]),
+
+      Section({ title: 'Energy counter' }, [
+        TextInput({
+          label: 'Battery capacity (Wh)',
+          placeholder: '500',
+          value: capacityWh ? String(capacityWh) : '',
+          onChange: (v) => set(KEYS.capacityWh, Number(v) || 0),
+        }),
+        hint('Printed on the pack, or volts x amp-hours: 36V x 14Ah = 504 Wh. The widget converts the battery percentage into Wh left. Leave empty to hide it.'),
       ]),
     ])
   },

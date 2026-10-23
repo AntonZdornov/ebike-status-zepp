@@ -1,13 +1,13 @@
 {
   "configVersion": "v3",
   "app": {
-    "appId": 23010,
+    "appId": 1132279,
     "appName": "E-Bike Battery",
     "appType": "app",
     "extType": "workout",
     "version": {
       "code": 1,
-      "name": "1.0.0"
+      "name": "1.0.1"
     },
     "icon": "icon.png",
     "vender": "huami",

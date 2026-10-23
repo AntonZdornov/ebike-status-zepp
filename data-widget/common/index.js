@@ -14,7 +14,7 @@ import {
 
 const SCAN_DURATION_MS = 15000
 const CONNECT_TIMEOUT_MS = 20000
-const POLL_INTERVAL_MS = 60000 // fallback read in case notifications don't arrive
+const POLL_INTERVAL_MS = 30000 // fallback read in case notifications don't arrive
 const RETRY_MIN_MS = 3000
 const RETRY_MAX_MS = 30000
 const LOW_HYSTERESIS = 3 // avoids repeated vibration when the level flickers 19/20/19
@@ -36,8 +36,12 @@ const STATUS = {
   error: { text: 'BLE error', color: COLOR.low },
 }
 
+function formatEnergy(leftWh) {
+  return `${Math.round(leftWh)} Wh left`
+}
+
 // Layout in designWidth = 480 coordinates
-const BAR = { x: 60, y: 280, w: 360, h: 36 }
+const BAR = { x: 60, y: 256, w: 360, h: 36 }
 const DOT = { cx: 240, cy: 30, r: 12 }
 
 DataWidget(
@@ -104,6 +108,7 @@ DataWidget(
       this.storage.setItem(LOCAL_CONFIG_KEY, JSON.stringify(next))
       this.state.config = next
       this.drawThresholdMarker()
+      this.renderEnergy()
       if (this.state.level !== null) this.renderLevel(this.state.level)
 
       const bleChanged =
@@ -300,9 +305,9 @@ DataWidget(
 
       createWidget(widget.TEXT, {
         x: 0,
-        y: px(70),
+        y: px(62),
         w: px(480),
-        h: px(40),
+        h: px(36),
         text: 'BIKE BATTERY',
         text_size: px(26),
         color: COLOR.muted,
@@ -312,9 +317,9 @@ DataWidget(
 
       this.levelText = createWidget(widget.TEXT, {
         x: 0,
-        y: px(115),
+        y: px(100),
         w: px(480),
-        h: px(150),
+        h: px(140),
         text: '--%',
         text_size: px(120),
         color: COLOR.white,
@@ -350,11 +355,24 @@ DataWidget(
       })
       this.drawThresholdMarker()
 
+      this.energyText = createWidget(widget.TEXT, {
+        x: px(60),
+        y: px(302),
+        w: px(360),
+        h: px(36),
+        text: '',
+        text_size: px(28),
+        color: COLOR.muted,
+        align_h: align.CENTER_H,
+        align_v: align.CENTER_V,
+      })
+      this.energyText.setProperty(prop.VISIBLE, false)
+
       this.statusText = createWidget(widget.TEXT, {
         x: px(40),
-        y: px(335),
+        y: px(342),
         w: px(400),
-        h: px(40),
+        h: px(36),
         text: '',
         text_size: px(30),
         color: COLOR.mid,
@@ -364,7 +382,7 @@ DataWidget(
 
       this.detailText = createWidget(widget.TEXT, {
         x: px(60),
-        y: px(375),
+        y: px(380),
         w: px(360),
         h: px(60),
         text: '',
@@ -406,6 +424,7 @@ DataWidget(
       const color = isLow ? COLOR.low : level <= lowThreshold * 2 ? COLOR.mid : COLOR.ok
 
       this.levelText.setProperty(prop.MORE, { text: `${level}%`, color })
+      this.renderEnergy()
 
       if (level === 0) {
         this.barFill.setProperty(prop.VISIBLE, false)
@@ -423,6 +442,22 @@ DataWidget(
       } else if (level > lowThreshold + LOW_HYSTERESIS) {
         this.state.lowAlerted = false
       }
+    },
+
+    // Energy still in the pack: 90 % of a 500 Wh battery = 450 Wh. The percentage is the
+    // bike BMS's own estimate and discharge isn't linear in energy, so this is an approximation.
+    renderEnergy() {
+      if (!this.energyText) return
+      const { capacityWh } = this.state.config
+      const { level } = this.state
+
+      if (!capacityWh || level === null) {
+        this.energyText.setProperty(prop.VISIBLE, false)
+        return
+      }
+
+      this.energyText.setProperty(prop.TEXT, formatEnergy((level / 100) * capacityWh))
+      this.energyText.setProperty(prop.VISIBLE, true)
     },
   }),
 )

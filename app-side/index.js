@@ -13,6 +13,7 @@ AppSideService(
         serviceUuid: this.settings.getItem(SETTINGS_KEYS.serviceUuid),
         charUuid: this.settings.getItem(SETTINGS_KEYS.charUuid),
         lowThreshold: this.settings.getItem(SETTINGS_KEYS.lowThreshold),
+        capacityWh: this.settings.getItem(SETTINGS_KEYS.capacityWh),
       })
     },
 
