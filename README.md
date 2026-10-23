@@ -2,6 +2,7 @@
 
 Workout data widget for **Amazfit** watches running **Zepp OS 3.6+** (`app.json`: `apiVersion.minVersion` `3.6`, `appId` 1132279, `extType: workout`).
 During a cycling workout the watch connects to the e-bike over BLE and shows its battery level.
+Tested with a Shimano STEPS EP8 e-bike.
 
 ## What it does
 
