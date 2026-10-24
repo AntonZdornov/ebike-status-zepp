@@ -6,8 +6,8 @@
     "appType": "app",
     "extType": "workout",
     "version": {
-      "code": 1,
-      "name": "1.0.1"
+      "code": 2,
+      "name": "1.1.1"
     },
     "icon": "icon.png",
     "vender": "huami",

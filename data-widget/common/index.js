@@ -12,11 +12,26 @@ import {
   uuidEquals,
 } from '../../utils/config'
 
+// easy-ble 1.7.8 bug: BLEMaster.connect() ends with
+//   this.#initiateConnection(dev_addr, response_callback, attempt, max_attempts, timeout_duration)
+// but those last three identifiers are declared nowhere, so every connect() throws
+// "ReferenceError: attempt is not defined" before mstConnect is ever called.
+// #initiateConnection ignores the extra arguments, so defining them as globals is enough.
+try {
+  globalThis.attempt = 0
+  globalThis.max_attempts = 0
+  globalThis.timeout_duration = 0
+} catch (e) {
+  console.log('BLE: could not install easy-ble connect() shim')
+}
+
 const SCAN_DURATION_MS = 15000
+const SCAN_GRACE_MS = 5000 // watchdog margin on top of the library's own scan duration
 const CONNECT_TIMEOUT_MS = 20000
 const POLL_INTERVAL_MS = 30000 // fallback read in case notifications don't arrive
 const RETRY_MIN_MS = 3000
 const RETRY_MAX_MS = 30000
+const MAX_ATTEMPTS = 5 // after this many failures we stop retrying and wait for the user
 const LOW_HYSTERESIS = 3 // avoids repeated vibration when the level flickers 19/20/19
 
 const COLOR = {
@@ -34,6 +49,7 @@ const STATUS = {
   connected: { text: 'Connected', color: COLOR.ok },
   lost: { text: 'Connection lost', color: COLOR.low },
   error: { text: 'BLE error', color: COLOR.low },
+  failed: { text: 'Bike not found', color: COLOR.low },
 }
 
 function formatEnergy(leftWh) {
@@ -43,6 +59,7 @@ function formatEnergy(leftWh) {
 // Layout in designWidth = 480 coordinates
 const BAR = { x: 60, y: 256, w: 360, h: 36 }
 const DOT = { cx: 240, cy: 30, r: 12 }
+const BTN = { x: 120, y: 406, w: 240, h: 64 }
 
 DataWidget(
   BasePage({
@@ -52,6 +69,7 @@ DataWidget(
       lowAlerted: false,
       foundMac: '',
       retryDelay: RETRY_MIN_MS,
+      attempts: 0,
       notifySupported: true,
       session: 0, // bumped on every BLE restart — filters out stale callbacks
     },
@@ -125,21 +143,51 @@ DataWidget(
     // Always scan first: mstConnect takes only the 6-byte MAC without the address type (public/random),
     // and the watch BLE stack learns the type from scan results. A "blind" connect may hang with no response.
     startBle() {
+      this.showRetryButton(false)
       this.scan(++this.state.session)
     },
 
+    // Must never throw: fail() tears down before it schedules the retry, so an exception here
+    // would kill the retry loop and freeze the UI on whatever status was last shown.
     stopBle() {
       this.state.session++
       Object.keys(this.timers).forEach((k) => this.clearTimer(k))
-      this.ble.stopScan()
-      this.ble.off.deregisterAll()
-      if (this.ble.get.isConnected()) this.ble.quit()
+      try {
+        this.ble.stopScan()
+        // easy-ble creates `off` only once startListener has succeeded — it is undefined on a
+        // fresh instance, and `this.ble.off.deregisterAll()` then throws a TypeError
+        if (this.ble.off) this.ble.off.deregisterAll()
+        if (this.ble.get.isConnected()) this.ble.quit()
+      } catch (e) {
+        console.log('BLE: teardown error (ignored):', e && e.message)
+      }
+    },
+
+    // A fresh BLEMaster on every restart, for two reasons:
+    //  - easy-ble clears its "connection in progress" flag only when mstConnect responds. If it
+    //    never did, every later connect() returns 'in progress'.
+    //  - the library's scan-duration timer is a plain setTimeout it never cancels. Reusing the
+    //    instance lets that orphan timer call stopScan() — which is the global mstStopScan() —
+    //    and silently kill the scan we just started.
+    resetBle() {
+      this.stopBle()
+      this.ble = new BLEMaster()
     },
 
     restartBle() {
-      this.stopBle()
+      this.resetBle()
       this.state.retryDelay = RETRY_MIN_MS
+      this.state.attempts = 0
       this.startBle()
+    },
+
+    // Manual restart from the "Search again" button after MAX_ATTEMPTS failures
+    retryNow() {
+      console.log('BLE: Manual retry requested')
+      this.seenDevices = {}
+      this.state.foundMac = ''
+      this.state.notifySupported = true
+      this.restartBle()
     },
 
     scan(session) {
@@ -150,6 +198,15 @@ DataWidget(
 
       this.setStatus(STATUS.searching)
       console.log('BLE: Scanning for', target ? `MAC ${target}` : `service ${serviceUuid}`)
+
+      // on_duration below is a plain setTimeout inside easy-ble and the only thing that would
+      // otherwise end a scan that never reports anything — back it with our own watchdog
+      this.setTimer('scan', SCAN_DURATION_MS + SCAN_GRACE_MS, () => {
+        if (!found && session === this.state.session) {
+          this.state.foundMac = ''
+          this.fail(STATUS.searching, 'Scan watchdog timeout', session)
+        }
+      })
 
       const ok = this.ble.startScan(
         (dev) => {
@@ -163,6 +220,7 @@ DataWidget(
           if (!match) return
 
           found = true
+          this.clearTimer('scan')
           this.ble.stopScan()
           if (!mac) this.state.foundMac = dev.dev_addr
           this.connectTo(dev.dev_addr, session)
@@ -172,6 +230,7 @@ DataWidget(
           allow_duplicates: true, // otherwise easy-ble won't report an already-seen bike after a reconnect
           throttle_interval: 500,
           on_duration: () => {
+            this.clearTimer('scan')
             if (!found && session === this.state.session) {
               this.state.foundMac = '' // the address may have changed (random address) — search by UUID next time
               this.fail(STATUS.searching, target ? 'No bike with this MAC in range' : 'Bike not found', session)
@@ -235,6 +294,7 @@ DataWidget(
         }
 
         this.state.retryDelay = RETRY_MIN_MS
+        this.state.attempts = 0
         this.setStatus(STATUS.connected)
 
         const onData = (_uuid, data) => this.handleBatteryData(data)
@@ -253,15 +313,21 @@ DataWidget(
     fail(status, detail, session) {
       if (session !== this.state.session) return
       console.log('BLE error:', JSON.stringify({ status: status.text, detail }))
-      // stopBle() closes the session, so the 'disconnected' callback from quit() won't land here
-      this.stopBle()
-      // easy-ble clears its "connection in progress" flag only when mstConnect responds. If it never did,
-      // every later connect() returns 'in progress' — so start over with a fresh instance
-      this.ble = new BLEMaster()
+      // resetBle() closes the session, so the 'disconnected' callback from quit() won't land here
+      this.resetBle()
+
+      this.state.attempts++
+      const attempt = `${this.state.attempts}/${MAX_ATTEMPTS}`
+
+      if (this.state.attempts >= MAX_ATTEMPTS) {
+        this.setStatus(STATUS.failed, `${detail ? detail + ' · ' : ''}${MAX_ATTEMPTS} attempts failed`)
+        this.showRetryButton(true)
+        return
+      }
 
       const delay = this.state.retryDelay
       this.state.retryDelay = Math.min(delay * 2, RETRY_MAX_MS)
-      this.setStatus(status, `${detail ? detail + ' · ' : ''}retry in ${Math.round(delay / 1000)}s`)
+      this.setStatus(status, `${detail ? detail + ' · ' : ''}${attempt} · retry in ${Math.round(delay / 1000)}s`)
 
       this.setTimer('retry', delay, () => this.startBle())
     },
@@ -391,6 +457,33 @@ DataWidget(
         align_h: align.CENTER_H,
         align_v: align.TOP,
         text_style: text_style.WRAP,
+      })
+
+      this.retryButton = createWidget(widget.BUTTON, {
+        x: px(BTN.x),
+        y: px(BTN.y),
+        w: px(BTN.w),
+        h: px(BTN.h),
+        radius: px(BTN.h / 2),
+        text: 'Restart',
+        text_size: px(26),
+        color: COLOR.white,
+        normal_color: COLOR.track,
+        press_color: COLOR.muted,
+        click_func: () => this.retryNow(),
+      })
+      this.retryButton.setProperty(prop.VISIBLE, false)
+    },
+
+    // Shown only after MAX_ATTEMPTS failures; the detail line shrinks to one row to make space
+    showRetryButton(visible) {
+      if (!this.retryButton) return
+      this.retryButton.setProperty(prop.VISIBLE, visible)
+      this.detailText.setProperty(prop.MORE, {
+        x: px(60),
+        y: px(380),
+        w: px(360),
+        h: px(visible ? 26 : 60),
       })
     },
 
