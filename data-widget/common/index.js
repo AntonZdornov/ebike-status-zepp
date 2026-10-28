@@ -28,7 +28,7 @@ try {
 const SCAN_DURATION_MS = 15000
 const SCAN_GRACE_MS = 5000 // watchdog margin on top of the library's own scan duration
 const CONNECT_TIMEOUT_MS = 20000
-const POLL_INTERVAL_MS = 30000 // fallback read in case notifications don't arrive
+const POLL_INTERVAL_MS = 10000 // fallback read in case notifications don't arrive
 const RETRY_MIN_MS = 3000
 const RETRY_MAX_MS = 30000
 const MAX_ATTEMPTS = 5 // after this many failures we stop retrying and wait for the user
@@ -57,9 +57,9 @@ function formatEnergy(leftWh) {
 }
 
 // Layout in designWidth = 480 coordinates
-const BAR = { x: 60, y: 256, w: 360, h: 36 }
+const BAR = { x: 60, y: 240, w: 360, h: 36 }
 const DOT = { cx: 240, cy: 30, r: 12 }
-const BTN = { x: 120, y: 406, w: 240, h: 64 }
+const BTN = { x: 130, y: 414, w: 220, h: 56 }
 
 DataWidget(
   BasePage({
@@ -143,7 +143,6 @@ DataWidget(
     // Always scan first: mstConnect takes only the 6-byte MAC without the address type (public/random),
     // and the watch BLE stack learns the type from scan results. A "blind" connect may hang with no response.
     startBle() {
-      this.showRetryButton(false)
       this.scan(++this.state.session)
     },
 
@@ -181,7 +180,9 @@ DataWidget(
       this.startBle()
     },
 
-    // Manual restart from the "Search again" button after MAX_ATTEMPTS failures
+    // Manual restart from the "Reconnect" button. Always available, including while the widget
+    // still believes it is connected: the watch can keep a stale link after the bike was paired
+    // elsewhere, and nothing but a full teardown recovers from that.
     retryNow() {
       console.log('BLE: Manual retry requested')
       this.seenDevices = {}
@@ -320,8 +321,7 @@ DataWidget(
       const attempt = `${this.state.attempts}/${MAX_ATTEMPTS}`
 
       if (this.state.attempts >= MAX_ATTEMPTS) {
-        this.setStatus(STATUS.failed, `${detail ? detail + ' · ' : ''}${MAX_ATTEMPTS} attempts failed`)
-        this.showRetryButton(true)
+        this.setStatus(STATUS.failed, `${detail ? detail + ' · ' : ''}${MAX_ATTEMPTS} attempts failed · tap Reconnect`)
         return
       }
 
@@ -383,9 +383,9 @@ DataWidget(
 
       this.levelText = createWidget(widget.TEXT, {
         x: 0,
-        y: px(100),
+        y: px(96),
         w: px(480),
-        h: px(140),
+        h: px(132),
         text: '--%',
         text_size: px(120),
         color: COLOR.white,
@@ -423,7 +423,7 @@ DataWidget(
 
       this.energyText = createWidget(widget.TEXT, {
         x: px(60),
-        y: px(302),
+        y: px(284),
         w: px(360),
         h: px(36),
         text: '',
@@ -436,7 +436,7 @@ DataWidget(
 
       this.statusText = createWidget(widget.TEXT, {
         x: px(40),
-        y: px(342),
+        y: px(324),
         w: px(400),
         h: px(36),
         text: '',
@@ -448,9 +448,9 @@ DataWidget(
 
       this.detailText = createWidget(widget.TEXT, {
         x: px(60),
-        y: px(380),
+        y: px(362),
         w: px(360),
-        h: px(60),
+        h: px(52),
         text: '',
         text_size: px(22),
         color: COLOR.muted,
@@ -465,25 +465,12 @@ DataWidget(
         w: px(BTN.w),
         h: px(BTN.h),
         radius: px(BTN.h / 2),
-        text: 'Restart',
+        text: 'Reconnect',
         text_size: px(26),
         color: COLOR.white,
         normal_color: COLOR.track,
         press_color: COLOR.muted,
         click_func: () => this.retryNow(),
-      })
-      this.retryButton.setProperty(prop.VISIBLE, false)
-    },
-
-    // Shown only after MAX_ATTEMPTS failures; the detail line shrinks to one row to make space
-    showRetryButton(visible) {
-      if (!this.retryButton) return
-      this.retryButton.setProperty(prop.VISIBLE, visible)
-      this.detailText.setProperty(prop.MORE, {
-        x: px(60),
-        y: px(380),
-        w: px(360),
-        h: px(visible ? 26 : 60),
       })
     },
 
